@@ -64,7 +64,7 @@ Updates the SSR control parameters and triggers pattern generation.
 | Name       | Type  | Description |
 |------------|--------|-------------|
 | `mode`     | enum   | One of `MODE_OFF`, `MODE_BURST`, `MODE_DOWNSHIFT`, `MODE_UPSHIFT`, `MODE_SIGMADELTA` |
-| `p_active` | float  | Active power from smart meter (positive = import, negative = export) |
+| `p_active` | float  | Active power from smart meter (positive = export, negative = import) |
 | `p_boiler` | float  | Current heating power (if p_boiler < 1 -> uses `P_BOILER_MAX_NOM`) |
 
 #### Response
