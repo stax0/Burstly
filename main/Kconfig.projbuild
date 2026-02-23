@@ -1,0 +1,6 @@
+# Kconfig.projbuild im Projekt-Root
+menu "Custom"
+    osource "../components/ssr/Kconfig"
+    osource "../components/http/Kconfig"
+    osource "../components/wifi/Kconfig"
+endmenu

@@ -1,0 +1,13 @@
+menu "WiFi"
+config WIFI_SSID
+    string "WiFi SSID"
+    default "MyIoTWiFi"
+
+config WIFI_PASSWORD
+    string "WiFi Password"
+    default "MyIoTWiFiPassword"
+
+config WIFI_MAX_STACK_RESTARTS
+    int "WiFi Stack Max Restarts before Fatal"
+    default 3
+endmenu
