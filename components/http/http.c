@@ -1,45 +1,44 @@
 #include "http.h"
+
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "freertos/idf_additions.h"
 #include "ssr.h"
 
-static const char *TAG = "http";
+static const char* TAG = "http";
 
 static httpd_handle_t server = NULL;
 static bool running = false;
 
-
-static void reboot_task(void *pvParameters) {
+static void reboot_task(void* pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(1000));
     esp_restart();
 }
 
-static esp_err_t reboot_get_handler(httpd_req_t *req)
-{
+static esp_err_t reboot_get_handler(httpd_req_t* req) {
     httpd_resp_sendstr(req, "Rebooting...");
     xTaskCreate(reboot_task, "reboot_task", 2048, NULL, 5, NULL);
     return ESP_OK;
 }
 
-static esp_err_t set_get_handler(httpd_req_t *req)
-{
+static esp_err_t set_get_handler(httpd_req_t* req) {
     char query[128];
-    char mode_str[16]     = {0};
+    char mode_str[16] = {0};
     char p_active_str[16] = {0};
     char p_boiler_str[16] = {0};
 
     if (httpd_req_get_url_query_len(req) >= sizeof(query) ||
         httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
-
         httpd_resp_set_status(req, "400 Bad Request");
         httpd_resp_sendstr(req, "Bad request");
         return ESP_OK;
     }
 
-    bool mode_ok     = httpd_query_key_value(query, "mode",     mode_str,     sizeof(mode_str))     == ESP_OK;
-    bool p_active_ok = httpd_query_key_value(query, "p_active", p_active_str, sizeof(p_active_str)) == ESP_OK;
-    bool p_boiler_ok = httpd_query_key_value(query, "p_boiler", p_boiler_str, sizeof(p_boiler_str)) == ESP_OK;
+    bool mode_ok = httpd_query_key_value(query, "mode", mode_str, sizeof(mode_str)) == ESP_OK;
+    bool p_active_ok =
+        httpd_query_key_value(query, "p_active", p_active_str, sizeof(p_active_str)) == ESP_OK;
+    bool p_boiler_ok =
+        httpd_query_key_value(query, "p_boiler", p_boiler_str, sizeof(p_boiler_str)) == ESP_OK;
 
     if (!mode_ok) {
         httpd_resp_set_status(req, "400 Bad Request");
@@ -80,8 +79,8 @@ static esp_err_t set_get_handler(httpd_req_t *req)
 
     char resp[128];
     snprintf(resp, sizeof(resp),
-             "{\"mode\":\"%s\",\"p_active\":%.2f,\"p_boiler\":%.2f,\"ssr_lvl\":%d}",
-             mode_str, p_active, p_boiler, ssr_lvl_new);
+             "{\"mode\":\"%s\",\"p_active\":%.2f,\"p_boiler\":%.2f,\"ssr_lvl\":%d}", mode_str,
+             p_active, p_boiler, ssr_lvl_new);
 
     httpd_resp_sendstr(req, resp);
 
@@ -89,28 +88,18 @@ static esp_err_t set_get_handler(httpd_req_t *req)
 }
 
 static const httpd_uri_t uri_reboot = {
-    .uri      = "/reboot",
-    .method   = HTTP_GET,
-    .handler  = reboot_get_handler,
-    .user_ctx = NULL
-};
+    .uri = "/reboot", .method = HTTP_GET, .handler = reboot_get_handler, .user_ctx = NULL};
 
 static const httpd_uri_t uri_set = {
-    .uri      = "/set",
-    .method   = HTTP_GET,
-    .handler  = set_get_handler,
-    .user_ctx = NULL
-};
+    .uri = "/set", .method = HTTP_GET, .handler = set_get_handler, .user_ctx = NULL};
 
-static httpd_handle_t start_server_internal(void)
-{
+static httpd_handle_t start_server_internal(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     httpd_handle_t new_server = NULL;
 
     ESP_LOGI(TAG, "Starting HTTP server...");
 
     if (httpd_start(&new_server, &config) == ESP_OK) {
-
         httpd_register_uri_handler(new_server, &uri_reboot);
         httpd_register_uri_handler(new_server, &uri_set);
 
@@ -121,9 +110,7 @@ static httpd_handle_t start_server_internal(void)
     return NULL;
 }
 
-
-esp_err_t http_server_start(void)
-{
+esp_err_t http_server_start(void) {
     if (running) {
         ESP_LOGW(TAG, "HTTP server already running");
         return ESP_OK;
@@ -139,8 +126,7 @@ esp_err_t http_server_start(void)
     return ESP_OK;
 }
 
-esp_err_t http_server_stop(void)
-{
+esp_err_t http_server_stop(void) {
     if (!running) {
         ESP_LOGW(TAG, "HTTP server already stopped");
         return ESP_OK;
