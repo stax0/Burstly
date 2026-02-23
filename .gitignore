@@ -69,6 +69,8 @@ env/
 # Language Servers
 .clangd/
 .clangd
+.clang-format
+format.sh
 .ccls-cache/
 compile_commands.json
 

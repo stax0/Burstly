@@ -1,6 +1,7 @@
 #pragma once
-#include <stdbool.h>
 #include "esp_err.h"
+
+#include <stdbool.h>
 
 typedef enum {
     COLOR_OFF = 0,
