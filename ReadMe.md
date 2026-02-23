@@ -63,7 +63,7 @@ Updates the SSR control parameters and triggers pattern generation.
 |------------|--------|-------------|
 | `mode`     | enum   | One of `MODE_OFF`, `MODE_BURST`, `MODE_DOWNSHIFT`, `MODE_UPSHIFT`, `MODE_SIGMADELTA` |
 | `p_active` | float  | Active power from smart meter (positive = import, negative = export) |
-| `p_boiler` | float  | Current heating power; if p_boiler < 1 → uses `P_BOILER_MAX_NOM` |
+| `p_boiler` | float  | Current heating power (if p_boiler < 1 -> uses `P_BOILER_MAX_NOM`) |
 
 #### Response
 - **200 OK** — Valid parameters; response includes calculated `ssr_lvl`
@@ -185,6 +185,31 @@ Messages are transferred via queue from the API task to the SSR real‑time task
 - `WIFI_PASSWORD`  
 - `WIFI_MAX_STACK_RESTARTS`
 
+## Hardware Requirements
+
+Burstly is designed to run on a **dual‑core ESP32 MCU**.  
+Because the project uses **task pinning** (WiFi/API on Core 0 and real‑time SSR control on Core 1),  
+a **single‑core variant will not work**.
+
+### Recommended MCU Module
+- **ESP32‑S3‑WROOM‑1**  
+  Provides dual‑core operation, stable WiFi performance, and sufficient timing accuracy for full‑wave SSR control.
+
+
+### Recommended SSR
+Burstly controls a **Zero‑Cross Solid State Relay (SSR)** to switch full AC waves.  
+A proper zero‑cross SSR is required for clean waveform switching and predictable timing.
+
+If the SSR requires **more than 3V input control voltage**, a **level shifter** must be used.  
+Many SSRs accept 3–32V input and can be driven directly from an ESP32 GPIO.
+
+Example compatible unit: **Carlo Gavazzi RGC1A23D30KKE**
+
+Any equivalent SSR can be used as long as:
+- it is **zero‑cross**
+- it supports **3.0V input**, or a level shifter is added
+- it is designed for **resistive loads**
+- its output rating safely covers the **maximum heating power**, ideally ×1.5–2 to account for derating and thermal overhead
 
 
 # Disclaimer
