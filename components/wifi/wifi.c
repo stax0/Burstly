@@ -100,9 +100,18 @@ esp_err_t wifi_init(void) {
         "ip_event_handler_register()");
 
     wifi_config_t wifi_config = {
-        .sta = {.ssid = CONFIG_WIFI_SSID, .password = CONFIG_WIFI_PASSWORD},
+        .sta =
+            {
+                .ssid = CONFIG_WIFI_SSID,
+                .password = CONFIG_WIFI_PASSWORD,
+                .scan_method = WIFI_FAST_SCAN,
+                .sort_method = WIFI_CONNECT_AP_BY_SIGNAL,
+                .threshold.rssi = -78,
+                .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+            },
     };
 
+    ESP_RETURN_ON_ERROR(esp_wifi_set_ps(WIFI_PS_NONE), TAG, "esp_wifi_set_ps()");
     ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG, "esp_wifi_set_mode()");
     ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_STA, &wifi_config), TAG,
                         "esp_wifi_set_config()");
