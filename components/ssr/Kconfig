@@ -1,14 +1,17 @@
 menu "SSR"
 config SSR_LVL_MIN
     int "Minimum SSR Level (%)"
+    range 10 100
     default 10
 
 config SSR_LVL_MAX
     int "Maximum SSR Level (%)"
+    range 0 100
     default 100
 
 config SSR_LVL_BURST
     int "Burst SSR Level (%)"
+    range 10 100
     default 75
 
 config SSR_GPIO
