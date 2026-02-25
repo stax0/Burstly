@@ -110,8 +110,10 @@ void ssr_coordinator(void* pv) {
 
     for (;;) {
         if (xQueueReceive(ssr_control_queue, &msg, 0) == pdTRUE) {
-            if (msg.mode == MODE_DOWNSHIFT || msg.mode == MODE_UPSHIFT ||
-                msg.mode == MODE_SIGMADELTA) {
+            bool recalc = (msg.mode == MODE_DOWNSHIFT || msg.mode == MODE_UPSHIFT ||
+                           msg.mode == MODE_SIGMADELTA);
+
+            if (recalc) {
                 ssr_lvl = calc_ssr_lvl(&msg, ssr_lvl);
                 ESP_LOGI(TAG, "SSR LEVEL %d", ssr_lvl);
                 float ratio = (float)ssr_lvl / 100.0f;
@@ -122,8 +124,10 @@ void ssr_coordinator(void* pv) {
                     error = 0;
                 }
             }
+
             last_mode = msg.mode;
             last_recv_us = esp_timer_get_time();
+
         } else {
             if (esp_timer_get_time() - last_recv_us > watchdog_timeout_us) {
                 if (msg.mode != MODE_OFF) {
@@ -137,6 +141,7 @@ void ssr_coordinator(void* pv) {
         switch (msg.mode) {
         case MODE_BURST: {
             float ratio = (float)CONFIG_SSR_LVL_BURST / 100.0f;
+            ssr_lvl = CONFIG_SSR_LVL_BURST;
             uint8_t n_on_burst = (uint8_t)ceilf((float)SSR_STEPS * ratio);
             create_bresenham(pattern, n_on_burst);
             break;
@@ -153,6 +158,7 @@ void ssr_coordinator(void* pv) {
         case MODE_UNKNOWN:
         case MODE_OFF:
         default:
+            ssr_lvl = 0;
             create_bresenham(pattern, 0);
             break;
         }
