@@ -5,12 +5,13 @@
 
 typedef enum {
     COLOR_OFF = 0,
-    COLOR_RED,
-    COLOR_GREEN,
-    COLOR_BLUE,
-    COLOR_MAGENTA,
-    COLOR_YELLOW,
-    COLOR_ORANGE
+    COLOR_RED, // OFF
+    COLOR_GREEN, // NZ
+    COLOR_BLUE, // GZ
+    COLOR_YELLOW, // Err: TIMING
+    COLOR_MAGENTA, // BURST
+    COLOR_CYAN, // Err: INIT
+    COLOR_WHITE, // Err: DC Off
 } status_color_t;
 
 esp_err_t status_led_init(void);

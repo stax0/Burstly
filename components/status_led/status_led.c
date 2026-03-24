@@ -29,20 +29,25 @@ static void color_to_rgb(status_color_t color, uint8_t* r, uint8_t* g, uint8_t* 
         *g = 0;
         *b = 50;
         break;
+    case COLOR_YELLOW:
+        *r = 50;
+        *g = 35;
+        *b = 0;
+        break;
     case COLOR_MAGENTA:
         *r = 50;
         *g = 0;
+        *b = 40;
+        break;
+    case COLOR_CYAN:
+        *r = 0;
+        *g = 40;
         *b = 50;
         break;
-    case COLOR_YELLOW:
-        *r = 50;
-        *g = 50;
-        *b = 0;
-        break;
-    case COLOR_ORANGE:
-        *r = 50;
-        *g = 5;
-        *b = 0;
+    case COLOR_WHITE:
+        *r = 30;
+        *g = 30;
+        *b = 30;
         break;
     case COLOR_OFF:
     default:
@@ -70,6 +75,8 @@ esp_err_t status_led_init(void) {
                         "led_strip_new_rmt_device()");
 
     ESP_RETURN_ON_ERROR(led_strip_clear(led_strip), TAG, "led_strip_clear()");
+
+    status_led_set(COLOR_CYAN);
 
     return ESP_OK;
 }

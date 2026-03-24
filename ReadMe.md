@@ -3,19 +3,21 @@
 </p>
 
 **Burstly** is a high‑precision ESP‑IDF firmware project designed to control an electric heating element using **full‑wave AC modulation**.  
-It exposes a minimal REST API for real‑time interaction and implements a deterministic **20 ms full‑wave switching schedule**, suitable for smart‑meter–driven energy management and PV self‑consumption optimization.
+It exposes a minimal REST API for real‑time interaction and implements a deterministic **10 ms full‑wave switching schedule**, suitable for new generation smart‑meter with integration times below 30ms.
 
 Burstly runs two dedicated tasks — a WiFi/API coordinator and a real‑time SSR controller — delivering robust, predictable AC control patterns based on Bresenham distribution and configurable control modes.
 
 If no valid external control command is received within the configured watchdog timeout, the system automatically falls back to **safe OFF mode**, ensuring safety (with temperature protection assumed to be handled by an upper‑layer automation system).
 
+This branch is optimized for the ISKRA AM550, which features a short integration time of 30ms. If you require a more precise or highly customizable solution, please use the main branch instead.
+
 
 ## Overview
 Burstly is optimized for:
 
-- full‑wave SSR control (default 20 ms)
+- half‑wave SSR control (default 10 ms)
 - smart‑meter integration and PV power balancing
-- multiple regulation modes (Burst, Downshift, Upshift, Sigma‑Delta)
+- multiple regulation modes (OFF, NETZERO, SOFTZERO, BURST)
 - safe integration into home‑automation platforms (Home Assistant, etc.)
 - deterministic real‑time behavior and watchdog supervision
 
@@ -41,12 +43,12 @@ This task is **not time‑critical**.
 ### Real‑Time SSR Coordinator (Core 1)
 
 A fully deterministic, timing‑critical task:
-- Executes on a strict **FULL_WAVE** interval (20 ms default)  
-- Uses Bresenham algorithm to distribute ON‑waves uniformly  
-- Processes new control messages during the 20ms delay before the new INTEGRATION_TIME interval starts  
+- Executes on a strict **HALF_WAVE** interval (10 ms default)  
+- Uses fixed patterns for controlling the SSR  
+- Processes new control messages during the 10ms delay before the new INTEGRATION_TIME interval starts  
 - Repeats the current pattern if no new message arrives  
 - Triggers **safety off** if no API command was received within `SSR_WATCHDOG_S`  
-- If pattern computation ever exceeds timing (very unlikely), LED stays **solid orange** until reboot  
+- If pattern computation ever exceeds timing (very unlikely), LED stays **solid yellow** until reboot  
 
 This guarantees stable AC waveform timing independent of computation time.
 
@@ -63,9 +65,9 @@ Updates the SSR control parameters and triggers pattern generation.
 
 | Name       | Type  | Description |
 |------------|--------|-------------|
-| `mode`     | enum   | One of `MODE_OFF`, `MODE_BURST`, `MODE_DOWNSHIFT`, `MODE_UPSHIFT`, `MODE_SIGMADELTA` |
+| `mode`     | enum   | One of `MODE_OFF`, `MODE_BURST`, `MODE_NETZERO`, `MODE_SOFTZERO` |
 | `p_active` | float  | Active power from smart meter (positive = export, negative = import) |
-| `p_boiler` | float  | Current heating power (if p_boiler < 1 -> uses `P_BOILER_MAX_NOM`) |
+
 
 #### Response
 - **200 OK** — Valid parameters; response includes calculated `ssr_lvl`
@@ -81,12 +83,11 @@ Reboots the ESP32.
 
 ```c
 typedef enum {
-    MODE_UNKNOWN = 0,
+    MODE_INVALID,
     MODE_OFF,
     MODE_BURST,
-    MODE_DOWNSHIFT,
-    MODE_UPSHIFT,
-    MODE_SIGMADELTA
+    MODE_NETZERO,
+    MODE_SOFTZERO
 } ssr_mode_t;
 ```
 
@@ -98,24 +99,14 @@ SSR is always OFF.
 
 ### MODE_BURST  
 High‑power heating (e.g., manual boost cycles).  
-Uses `SSR_LVL_BURST` as configured via Kconfig.
 
-### MODE_DOWNSHIFT  
-Attempts to reduce grid import to ~0 W.  
+### MODE_NETZERO 
+Attempts to use zero grid import.  
 Uses:
-```c
-(uint8_t)ceilf((float)SSR_STEPS * ratio)
-```
 
-### MODE_UPSHIFT  
-Maximizes self‑consumption even if grid import (positive p_active) is required.  
-Uses:
-```c
-(uint8_t)floorf((float)SSR_STEPS * ratio)
-```
+### MODE_SOFTZERO  
+Similar to NETZERO, but with a more conservative approach. It allows a grid import of up to `P_BOILER_LEVEL_MIN / 2` before throttling down. It follows the principle: 'Better to import 400W than to export 400W.' This mode is ideal for winter months or days with low PV yield.
 
-### MODE_SIGMADELTA  
-Balanced mode minimizing both import and export, inspired by sigma‑delta modulation.
 
 
 ## Integration Time (Why It Matters)
@@ -127,10 +118,7 @@ To avoid misleading measurements:
 - bursts must not be clustered  
 - SSR output must match smart‑meter averaging models  
 
-
-Therefore:
-- `INTEGRATION_TIME` controls the pattern calculation window  
-- Bresenham ensures even full‑wave spacing  
+In an ideal world, the integration time is approximately 200ms, allowing for 10 control steps at full-wave resolution. However, modern smart meters like the Iskra AM550 integrate over just 30ms, which limits the resolution to 3 control steps at half-wave resolution.
 
 
 ## Watchdogs & Safety
@@ -143,12 +131,14 @@ Handled externally (e.g., via Home Assistant). Burstly only regulates energy flo
 
 
 ## Status LED
-
-- **Yellow solid** — WiFi or HTTP subsystem error, trying to recover
-- **Red solid** — WiFi or HTTP subsystem error, ESP will reboot
-- **Orange solid** — Pattern calculation overrun / critical system error / calculation algorithm needs to be adjusted 
-- **Green LED on/flashing** — SSR output currently energized  
-- **Off** — SSR inactive
+- **Red** — indicates MODE_OFF
+- **Green** — indicates MODE_NETZRO  
+- **Blue** — indicates MODE_SOFTZERO 
+- **Magenta** — indicates MODE_BURST
+- **Yellow** — indicates a timing error
+- **Cyan** — indicates init error
+- **White** — indicates an imbalance in half-wave distribution, which could lead to a DC offset.
+- **Off** — Controller inactive
 
 
 ## Control Message Structure
@@ -157,7 +147,6 @@ Handled externally (e.g., via Home Assistant). Burstly only regulates energy flo
 typedef struct {
   ssr_mode_t mode;
   float p_active;
-  float p_boiler;
 } ssr_control_msg_t;
 ```
 
@@ -166,23 +155,14 @@ Messages are transferred via queue from the API task to the SSR real‑time task
 
 ## Kconfig Options
 
-### SSR
-- `SSR_LVL_MIN`
-- `SSR_LVL_MAX`  
-- `SSR_LVL_BURST`  
+### SSR  
 - `SSR_GPIO`  
-- `SSR_DEBOUNCE_ON`
-- `SSR_DEBOUNCE_OFF`  
 - `SSR_WATCHDOG_S`
 
 ### Power
 - `P_BOILER_MAX_NOM`  
-- `P_HYSTERESE_BYPASS`  
-- `INTEGRATION_TIME`  
-- `FULL_WAVE`
 
 ### WiFi
-
 - `WIFI_SSID`  
 - `WIFI_PASSWORD`  
 - `WIFI_MAX_STACK_RESTARTS`
