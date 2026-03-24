@@ -25,62 +25,56 @@ static esp_err_t set_get_handler(httpd_req_t* req) {
     char query[128];
     char mode_str[16] = {0};
     char p_active_str[16] = {0};
-    char p_boiler_str[16] = {0};
 
     if (httpd_req_get_url_query_len(req) >= sizeof(query) ||
         httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
         httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "Bad request");
+        httpd_resp_sendstr(req, "Bad request: GENERIC");
         return ESP_OK;
     }
 
     bool mode_ok = httpd_query_key_value(query, "mode", mode_str, sizeof(mode_str)) == ESP_OK;
     bool p_active_ok =
         httpd_query_key_value(query, "p_active", p_active_str, sizeof(p_active_str)) == ESP_OK;
-    bool p_boiler_ok =
-        httpd_query_key_value(query, "p_boiler", p_boiler_str, sizeof(p_boiler_str)) == ESP_OK;
 
     if (!mode_ok) {
         httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "Bad request");
+        httpd_resp_sendstr(req, "Bad request: !MODE_OK");
         return ESP_OK;
     }
 
     ssr_mode_t mode = parse_mode(mode_str);
 
-    if (mode == MODE_UNKNOWN) {
+    if (mode == MODE_INVALID) {
         httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "Bad request");
+        httpd_resp_sendstr(req, "Bad request: MODE_INVALID");
         return ESP_OK;
     }
 
-    if (mode != MODE_OFF && (!p_active_ok || !p_boiler_ok)) {
+    if (mode != MODE_OFF && !p_active_ok) {
         httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "Bad request");
+        httpd_resp_sendstr(req, "Bad request: !P_ACTIVE_OK");
         return ESP_OK;
     }
 
     float p_active = p_active_ok ? strtof(p_active_str, NULL) : 0.0f;
-    float p_boiler = p_boiler_ok ? strtof(p_boiler_str, NULL) : 0.0f;
 
     httpd_resp_set_status(req, "200 OK");
     httpd_resp_set_type(req, "application/json");
 
-    uint8_t ssr_lvl_curr = ssr_lvl;
-    ssr_control_msg_t control_msg = {.p_active = p_active, .p_boiler = p_boiler, .mode = mode};
+    float ssr_lvl_curr = ssr_lvl;
+    ssr_control_msg_t control_msg = {.p_active = p_active, .mode = mode};
     xQueueOverwrite(ssr_control_queue, &control_msg);
 
-    uint16_t retries = (CONFIG_INTEGRATION_TIME / CONFIG_FULL_WAVE);
-
+    uint16_t retries = 25; // 25 * 20 = 500ms
     while (ssr_lvl_curr == ssr_lvl && retries--) {
-        vTaskDelay(pdMS_TO_TICKS(CONFIG_FULL_WAVE));
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
-    uint8_t ssr_lvl_new = ssr_lvl;
+    float ssr_lvl_new = ssr_lvl;
 
     char resp[128];
-    snprintf(resp, sizeof(resp),
-             "{\"mode\":\"%s\",\"p_active\":%.2f,\"p_boiler\":%.2f,\"ssr_lvl\":%d}", mode_str,
-             p_active, p_boiler, ssr_lvl_new);
+    snprintf(resp, sizeof(resp), "{\"mode\":\"%s\",\"p_active\":%.2f,\"ssr_lvl\":%.2f}", mode_str,
+             p_active, ssr_lvl_new);
 
     httpd_resp_sendstr(req, resp);
 

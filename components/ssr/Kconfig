@@ -1,19 +1,4 @@
 menu "SSR"
-config SSR_LVL_MIN
-    int "Minimum SSR Level (%)"
-    range 10 100
-    default 10
-
-config SSR_LVL_MAX
-    int "Maximum SSR Level (%)"
-    range 0 100
-    default 100
-
-config SSR_LVL_BURST
-    int "Burst SSR Level (%)"
-    range 10 100
-    default 75
-
 config SSR_GPIO
     int "GPIO connected to SSR"
     default 4
@@ -35,16 +20,4 @@ menu "Power"
 config P_BOILER_MAX_NOM
     int "Nominal maximum power of boiler (W)"
     default 3400
-
-config P_HYSTERESE_BYPASS
-    int "Power to bypass hysterese (W)"
-    default 800
-
-config INTEGRATION_TIME
-    int "Integration time of smart meter (ms)"
-    default 180
-
-config FULL_WAVE
-    int "AC fullwave duration (ms)"
-    default 20
 endmenu
