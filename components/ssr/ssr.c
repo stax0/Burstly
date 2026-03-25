@@ -8,6 +8,7 @@
 #include "freertos/projdefs.h"
 #include "sdkconfig.h"
 #include "ssr_handlers.h"
+#include "status_led.h"
 
 #include <stdint.h>
 
@@ -63,6 +64,7 @@ void ssr_coordinator(void* pv) {
 }
 
 esp_err_t ssr_init() {
+    status_led_override(COLOR_CYAN);
     ssr_control_queue = xQueueCreate(1, sizeof(ssr_control_msg_t));
     if (!ssr_control_queue) {
         ESP_LOGE(TAG, "Failed to create SSR Control Queue");

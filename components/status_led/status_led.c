@@ -9,6 +9,7 @@
 #define STATUS_LED_PIN 38
 static const char* TAG = "status_led";
 
+static status_color_t current_status_color = COLOR_OFF;
 static led_strip_handle_t led_strip;
 static volatile bool led_override_active = false;
 
@@ -75,16 +76,15 @@ esp_err_t status_led_init(void) {
                         "led_strip_new_rmt_device()");
 
     ESP_RETURN_ON_ERROR(led_strip_clear(led_strip), TAG, "led_strip_clear()");
-
-    status_led_set(COLOR_CYAN);
-
     return ESP_OK;
 }
 
 void status_led_set(status_color_t color) {
-    if (led_override_active)
+    if (led_override_active) {
+        current_status_color = color;
         return;
-
+    }
+    current_status_color = color;
     uint8_t r, g, b;
     color_to_rgb(color, &r, &g, &b);
 
@@ -104,4 +104,5 @@ void status_led_override(status_color_t color) {
 
 void status_led_clear_override(void) {
     led_override_active = false;
+    status_led_set(current_status_color);
 }

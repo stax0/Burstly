@@ -31,6 +31,7 @@ void wifi_coordinator(void* pv) {
                 case WIFI_EVENT_STA_START:
                 case WIFI_EVENT_STA_DISCONNECTED:
                     ESP_LOGW(TAG, "WiFi lost/starting. Reconnecting...");
+                    status_led_override(COLOR_CYAN);
                     current_state = WIFI_STATE_CONNECTING;
                     http_server_stop();
                     esp_wifi_connect();
@@ -51,8 +52,6 @@ void wifi_coordinator(void* pv) {
 
         if (current_state == WIFI_STATE_CONNECTING) {
             retry_count++;
-            status_led_override(COLOR_CYAN);
-
             if (retry_count > 10) {
                 ESP_LOGE(TAG, "Recovery: Total reset of WiFi stack");
                 current_state = WIFI_STATE_RECOVERING;
@@ -71,6 +70,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t base, int32_t id, voi
 }
 
 esp_err_t wifi_init(void) {
+    status_led_override(COLOR_CYAN);
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_RETURN_ON_ERROR(nvs_flash_erase(), TAG, "nvs_flash_erase()");
