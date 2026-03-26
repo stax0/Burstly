@@ -80,11 +80,11 @@ esp_err_t status_led_init(void) {
 }
 
 void status_led_set(status_color_t color) {
-    if (led_override_active) {
-        current_status_color = color;
-        return;
-    }
     current_status_color = color;
+
+    if (led_override_active)
+        return;
+
     uint8_t r, g, b;
     color_to_rgb(color, &r, &g, &b);
 
