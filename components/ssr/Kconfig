@@ -3,13 +3,9 @@ config SSR_GPIO
     int "GPIO connected to SSR"
     default 4
 
-config SSR_DEBOUNCE_ON
-    int "SSR Hysteresis debounce ON"
+config SSR_UPSHIFT_DEBOUNCE
+    int "SSR Hysteresis Upshift Debounce"
     default 2
-
-config SSR_DEBOUNCE_OFF
-    int "SSR Hysteresis debounce OFF"
-    default 4
 
 config SSR_WATCHDOG_S
     int "SSR Watchdog (s)"

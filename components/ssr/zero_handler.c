@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
+#include "sdkconfig.h"
 #include "ssr.h"
 #include "ssr_handlers.h"
 #include "status_led.h"
@@ -16,19 +17,25 @@ static const uint8_t* zh_pattern = NULL;
 
 static int c_pos = 0;
 static int c_neg = 0;
+static int c_up = 0;
+static int current_idx = 0;
 
 static const uint8_t wave_duration = 10;
 const int p_threshold_1_3 = CONFIG_P_BOILER_MAX_NOM * 0.33f;
 const int p_threshold_2_3 = CONFIG_P_BOILER_MAX_NOM * 0.66f;
 
+static const float LEVELS[] = {0.0f, 33.3f, 66.6f, 100.0f};
+
 static const uint8_t P_0[ZH_SSR_STEPS] = {0, 0, 0, 0, 0, 0};
 static const uint8_t P_33[ZH_SSR_STEPS] = {1, 0, 0, 1, 0, 0};
 static const uint8_t P_66[ZH_SSR_STEPS] = {1, 1, 0, 1, 1, 0};
 static const uint8_t P_100[ZH_SSR_STEPS] = {1, 1, 1, 1, 1, 1};
+static const uint8_t* PATTERNS[] = {P_0, P_33, P_66, P_100};
 
 static void nzh_enter(void) {
     zh_pattern = P_0;
     zh_ssr_lvl = 0;
+    current_idx = 0;
 
     status_led_set(COLOR_GREEN);
     ESP_LOGI(TAG, "NETZERO Mode Started");
@@ -39,6 +46,7 @@ static void nzh_enter(void) {
 static void szh_enter(void) {
     zh_pattern = P_0;
     zh_ssr_lvl = 0;
+    current_idx = 0;
 
     status_led_set(COLOR_BLUE);
     ESP_LOGI(TAG, "SOFTZERO Mode Started");
@@ -50,23 +58,34 @@ static void zh_run(ssr_control_msg_t* msg, bool is_new) {
     if (is_new || zh_pattern == NULL) {
         float p_eff = msg->p_active + (zh_ssr_lvl / 100.0f) * CONFIG_P_BOILER_MAX_NOM;
 
+        int target_idx = 0;
         if (p_eff >= (float)CONFIG_P_BOILER_MAX_NOM) {
-            zh_pattern = P_100;
-            zh_ssr_lvl = 100.0f;
+            target_idx = 3;
         } else if (p_eff >= p_threshold_2_3) {
-            zh_pattern = P_66;
-            zh_ssr_lvl = 66.6f;
+            target_idx = 2;
         } else if (p_eff >= p_threshold_1_3) {
-            zh_pattern = P_33;
-            zh_ssr_lvl = 33.3f;
+            target_idx = 1;
         } else if (msg->mode == MODE_SOFTZERO && p_eff >= (p_threshold_1_3 / 2)) {
-            zh_pattern = P_33;
-            zh_ssr_lvl = 33.3f;
+            target_idx = 1;
         } else {
-            zh_pattern = P_0;
-            zh_ssr_lvl = 0.0f;
+            target_idx = 0;
         }
-        ESP_LOGI(TAG, "p_eff: %.2f, ssr level: %.2f", p_eff, zh_ssr_lvl);
+
+        if (target_idx > current_idx) {
+            c_up++;
+            if (c_up >= CONFIG_SSR_UPSHIFT_DEBOUNCE) {
+                current_idx++;
+                c_up = 0;
+            }
+        } else {
+            current_idx = target_idx;
+            c_up = 0;
+        }
+
+        zh_ssr_lvl = LEVELS[current_idx];
+        zh_pattern = PATTERNS[current_idx];
+
+        ESP_LOGI(TAG, "p_eff: %.2f, ssr_lvl: %.2f, c_up: %d", p_eff, zh_ssr_lvl, c_up);
         ssr_lvl = zh_ssr_lvl;
     }
 
@@ -76,6 +95,11 @@ static void zh_run(ssr_control_msg_t* msg, bool is_new) {
         status_led_override(COLOR_WHITE);
         vTaskDelay(pdMS_TO_TICKS(2000));
         return;
+    }
+
+    if (c_pos > 30000 || c_neg > 30000) {
+        c_pos = 0;
+        c_neg = 0;
     }
 
     for (int i = 0; i < ZH_SSR_STEPS; i++) {
