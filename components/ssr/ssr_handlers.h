@@ -11,4 +11,5 @@ typedef struct {
 extern const ssr_handler_t off_handler;
 extern const ssr_handler_t burst_handler;
 extern const ssr_handler_t netzero_handler;
+extern const ssr_handler_t netzero_cap_handler;
 extern const ssr_handler_t softzero_handler;

@@ -3,7 +3,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
-typedef enum { MODE_INVALID, MODE_OFF, MODE_BURST, MODE_NETZERO, MODE_SOFTZERO } ssr_mode_t;
+typedef enum {
+    MODE_INVALID,
+    MODE_OFF,
+    MODE_BURST,
+    MODE_NETZERO,
+    MODE_NETZERO_CAP,
+    MODE_SOFTZERO
+} ssr_mode_t;
 
 typedef struct {
     ssr_mode_t mode;

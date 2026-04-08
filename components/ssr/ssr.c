@@ -95,6 +95,8 @@ ssr_mode_t parse_mode(const char* s) {
         return MODE_BURST;
     if (strcasecmp(s, "mode_netzero") == 0)
         return MODE_NETZERO;
+    if (strcasecmp(s, "mode_netzero_cap") == 0)
+        return MODE_NETZERO_CAP;
     if (strcasecmp(s, "mode_softzero") == 0)
         return MODE_SOFTZERO;
 

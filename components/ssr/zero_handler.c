@@ -43,6 +43,17 @@ static void nzh_enter(void) {
     zh_wake = xTaskGetTickCount();
 }
 
+static void nzch_enter(void) {
+    zh_pattern = P_0;
+    zh_ssr_lvl = 0;
+    current_idx = 0;
+
+    status_led_set(COLOR_GREEN);
+    ESP_LOGI(TAG, "NETZERO (cap) Mode Started");
+
+    zh_wake = xTaskGetTickCount();
+}
+
 static void szh_enter(void) {
     zh_pattern = P_0;
     zh_ssr_lvl = 0;
@@ -59,13 +70,13 @@ static void zh_run(ssr_control_msg_t* msg, bool is_new) {
         float p_eff = msg->p_active + (zh_ssr_lvl / 100.0f) * CONFIG_P_BOILER_MAX_NOM;
 
         int target_idx = 0;
-        if (p_eff >= (float)CONFIG_P_BOILER_MAX_NOM) {
+        if (p_eff >= (float)CONFIG_P_BOILER_MAX_NOM && msg->mode != MODE_NETZERO_CAP) {
             target_idx = 3;
         } else if (p_eff >= p_threshold_2_3) {
             target_idx = 2;
         } else if (p_eff >= p_threshold_1_3) {
             target_idx = 1;
-        } else if (msg->mode == MODE_SOFTZERO && p_eff >= (p_threshold_1_3 / 2)) {
+        } else if (msg->mode == MODE_SOFTZERO && p_eff >= (p_threshold_1_3 / 3)) {
             target_idx = 1;
         } else {
             target_idx = 0;
@@ -126,6 +137,11 @@ static void nzh_exit(void) {
     ESP_LOGI(TAG, "NetZero Mode Stopped");
 }
 
+static void nzch_exit(void) {
+    gpio_set_level(CONFIG_SSR_GPIO, 0);
+    ESP_LOGI(TAG, "NetZero (cap) Mode Stopped");
+}
+
 static void szh_exit(void) {
     gpio_set_level(CONFIG_SSR_GPIO, 0);
     ESP_LOGI(TAG, "SoftZero Mode Stopped");
@@ -133,6 +149,9 @@ static void szh_exit(void) {
 
 const ssr_handler_t netzero_handler = {
     .enter = nzh_enter, .run = zh_run, .exit = nzh_exit, .name = "NETZERO"};
+
+const ssr_handler_t netzero_cap_handler = {
+    .enter = nzch_enter, .run = zh_run, .exit = nzch_exit, .name = "NETZERO_CAP"};
 
 const ssr_handler_t softzero_handler = {
     .enter = szh_enter, .run = zh_run, .exit = szh_exit, .name = "SOFTZERO"};
