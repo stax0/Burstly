@@ -17,7 +17,7 @@ Burstly is optimized for:
 
 - half‑wave SSR control (default 10 ms)
 - smart‑meter integration and PV power balancing
-- multiple regulation modes (OFF, NETZERO, SOFTZERO, BURST)
+- multiple regulation modes (OFF, NETZERO, NETZERO_CAP, SOFTZERO, BURST)
 - safe integration into home‑automation platforms (Home Assistant, etc.)
 - deterministic real‑time behavior and watchdog supervision
 
@@ -65,7 +65,7 @@ Updates the SSR control parameters and triggers pattern generation.
 
 | Name       | Type  | Description |
 |------------|--------|-------------|
-| `mode`     | enum   | One of `MODE_OFF`, `MODE_BURST`, `MODE_NETZERO`, `MODE_SOFTZERO` |
+| `mode`     | enum   | One of `MODE_OFF`, `MODE_BURST`, `MODE_NETZERO`, `MODE_NETZERO_CAP`, `MODE_SOFTZERO` |
 | `p_active` | float  | Active power from smart meter (positive = export, negative = import) |
 
 
@@ -87,6 +87,7 @@ typedef enum {
     MODE_OFF,
     MODE_BURST,
     MODE_NETZERO,
+    MODE_NETZERO_CAP,
     MODE_SOFTZERO
 } ssr_mode_t;
 ```
@@ -103,6 +104,9 @@ High‑power heating (e.g., manual boost cycles).
 ### MODE_NETZERO 
 Attempts to use zero grid import.  
 Uses:
+
+### MODE_NETZERO_CAP
+Same as NETZERO, but limited to the 66 % level - the 100 % level is never used. Spreads the heating over a longer window, e.g. to absorb PV peaks above the grid export limit instead of filling the boiler early in the day.
 
 ### MODE_SOFTZERO  
 Similar to NETZERO, but with a more conservative approach. It allows a grid import of up to `P_BOILER_LEVEL_MIN / 2` before throttling down. It follows the principle: 'Better to import 400W than to export 400W.' This mode is ideal for winter months or days with low PV yield.
@@ -132,7 +136,7 @@ Handled externally (e.g., via Home Assistant). Burstly only regulates energy flo
 
 ## Status LED
 - **Red** — indicates MODE_OFF
-- **Green** — indicates MODE_NETZRO  
+- **Green** — indicates MODE_NETZERO and MODE_NETZERO_CAP  
 - **Blue** — indicates MODE_SOFTZERO 
 - **Magenta** — indicates MODE_BURST
 - **Yellow** — indicates a timing error

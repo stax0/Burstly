@@ -23,7 +23,7 @@ static esp_err_t reboot_get_handler(httpd_req_t* req) {
 
 static esp_err_t set_get_handler(httpd_req_t* req) {
     char query[128];
-    char mode_str[16] = {0};
+    char mode_str[32] = {0};
     char p_active_str[16] = {0};
 
     if (httpd_req_get_url_query_len(req) >= sizeof(query) ||

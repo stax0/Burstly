@@ -18,9 +18,8 @@ QueueHandle_t ssr_control_queue = NULL;
 volatile float ssr_lvl = 0;
 
 static const ssr_handler_t* handlers[] = {
-    [MODE_OFF] = &off_handler,
-    [MODE_BURST] = &burst_handler,
-    [MODE_NETZERO] = &netzero_handler,
+    [MODE_OFF] = &off_handler,           [MODE_BURST] = &burst_handler,
+    [MODE_NETZERO] = &netzero_handler,   [MODE_NETZERO_CAP] = &netzero_cap_handler,
     [MODE_SOFTZERO] = &softzero_handler,
 };
 
