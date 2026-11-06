@@ -76,7 +76,7 @@ static void zh_run(ssr_control_msg_t* msg, bool is_new) {
             target_idx = 2;
         } else if (p_eff >= p_threshold_1_3) {
             target_idx = 1;
-        } else if (msg->mode == MODE_SOFTZERO && p_eff >= (p_threshold_1_3 / 3)) {
+        } else if (msg->mode == MODE_SOFTZERO && p_eff >= (p_threshold_1_3 / 6)) {
             target_idx = 1;
         } else {
             target_idx = 0;

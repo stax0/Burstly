@@ -42,9 +42,9 @@ static void burst_run(ssr_control_msg_t* msg, bool is_new) {
 }
 
 static void burst_exit(void) {
-    ESP_LOGI(TAG, "Off Mode Stopped");
+    ESP_LOGI(TAG, "Burst Mode Stopped");
     gpio_set_level(CONFIG_SSR_GPIO, 0);
-    ssr_lvl = 100;
+    ssr_lvl = 0;
 }
 
 const ssr_handler_t burst_handler = {
