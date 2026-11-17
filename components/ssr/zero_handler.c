@@ -24,6 +24,12 @@ static const uint8_t wave_duration = 10;
 const int p_threshold_1_3 = CONFIG_P_BOILER_MAX_NOM * 0.33f;
 const int p_threshold_2_3 = CONFIG_P_BOILER_MAX_NOM * 0.66f;
 
+// SOFTZERO: switch to the next level once the surplus exceeds the current level by L1/6
+#define P_SOFT_MARGIN ((int)(CONFIG_P_BOILER_MAX_NOM * 0.33f) / 6)
+static const int p_soft_threshold_1 = P_SOFT_MARGIN;
+static const int p_soft_threshold_2 = CONFIG_P_BOILER_MAX_NOM / 3 + P_SOFT_MARGIN;
+static const int p_soft_threshold_3 = CONFIG_P_BOILER_MAX_NOM * 2 / 3 + P_SOFT_MARGIN;
+
 static const float LEVELS[] = {0.0f, 33.3f, 66.6f, 100.0f};
 
 static const uint8_t P_0[ZH_SSR_STEPS] = {0, 0, 0, 0, 0, 0};
@@ -69,14 +75,17 @@ static void zh_run(ssr_control_msg_t* msg, bool is_new) {
     if (is_new || zh_pattern == NULL) {
         float p_eff = msg->p_active + (zh_ssr_lvl / 100.0f) * CONFIG_P_BOILER_MAX_NOM;
 
+        const bool soft = (msg->mode == MODE_SOFTZERO);
+        const float t3 = soft ? p_soft_threshold_3 : (float)CONFIG_P_BOILER_MAX_NOM;
+        const float t2 = soft ? p_soft_threshold_2 : p_threshold_2_3;
+        const float t1 = soft ? p_soft_threshold_1 : p_threshold_1_3;
+
         int target_idx = 0;
-        if (p_eff >= (float)CONFIG_P_BOILER_MAX_NOM && msg->mode != MODE_NETZERO_CAP) {
+        if (p_eff >= t3 && msg->mode != MODE_NETZERO_CAP) {
             target_idx = 3;
-        } else if (p_eff >= p_threshold_2_3) {
+        } else if (p_eff >= t2) {
             target_idx = 2;
-        } else if (p_eff >= p_threshold_1_3) {
-            target_idx = 1;
-        } else if (msg->mode == MODE_SOFTZERO && p_eff >= (p_threshold_1_3 / 6)) {
+        } else if (p_eff >= t1) {
             target_idx = 1;
         } else {
             target_idx = 0;

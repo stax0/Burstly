@@ -109,7 +109,7 @@ Uses:
 Same as NETZERO, but limited to the 66 % level - the 100 % level is never used. Spreads the heating over a longer window, e.g. to absorb PV peaks above the grid export limit instead of filling the boiler early in the day.
 
 ### MODE_SOFTZERO  
-Similar to NETZERO, but takes every PV watt on low-yield days: it switches to the 33 % level as soon as the surplus reaches `P_BOILER_LEVEL_MIN / 6` (~130 W at 2350 W nominal), accepting a grid import of up to ~5/6 of `P_BOILER_LEVEL_MIN` (~650 W). The threshold stays above 0 W so the level doesn't toggle on meter noise. It follows the principle: 'Better to import than to export' - on a deficit day the boiler needs the energy anyway. Ideal for winter months or days with low PV yield.
+Similar to NETZERO, but takes every PV watt on low-yield days: it switches to the next level as soon as the surplus exceeds the current level by `P_BOILER_LEVEL_MIN / 6` (~130 W at 2350 W nominal), accepting a grid import of up to ~5/6 of `P_BOILER_LEVEL_MIN` (~650 W) on every level. At 2350 W nominal the thresholds are ~130 W (33 %), ~910 W (66 %) and ~1700 W (100 %). The margin keeps the level from toggling on meter noise. It follows the principle: 'Better to import than to export' - on a deficit day the boiler needs the energy anyway. Ideal for winter months or days with low PV yield.
 
 
 
