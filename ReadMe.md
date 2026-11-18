@@ -1,209 +1,168 @@
 <p align="center">
-<img src=".burstly_logo_full.png" width="330" style="display:block;margin:0 auto;">
+<img src=".burstly_logo_full.png" width="330">
 </p>
 
-**Burstly** is a high‑precision ESP‑IDF firmware project designed to control an electric heating element using **full‑wave AC modulation**.  
-It exposes a minimal REST API for real‑time interaction and implements a deterministic **10 ms full‑wave switching schedule**, suitable for new generation smart‑meter with integration times below 30ms.
+Burstly is ESP32 firmware that feeds surplus PV power into an electric water heater. It switches a zero cross solid state relay (SSR) in single AC half-waves, so a smart meter with a short integration time sees as little grid import and export as possible.
 
-Burstly runs two dedicated tasks — a WiFi/API coordinator and a real‑time SSR controller — delivering robust, predictable AC control patterns based on Bresenham distribution and configurable control modes.
+In use since March 2026 on a 150 l boiler with a 2.35 kW heater.
 
-If no valid external control command is received within the configured watchdog timeout, the system automatically falls back to **safe OFF mode**, ensuring safety (with temperature protection assumed to be handled by an upper‑layer automation system).
+## Why half-waves
 
-This branch is optimized for the ISKRA AM550, which features a short integration time of 30ms. If you require a more precise or highly customizable solution, please use the main branch instead.
+* Most PV diverters switch the heater in bursts of a second or longer.
+* Meters like the Iskra AM550 net import and export over 30 ms only. A full power burst is billed as import and the pause after it as export, even if the average is zero.
+* 30 ms at 50 Hz are three half-waves. Burstly switches whole half-waves in a pattern that repeats every 30 ms, so every meter window sees the same power.
+* This gives four levels: 0, 33, 66 and 100 %.
 
+## Results
 
-## Overview
-Burstly is optimized for:
+Estimates for the setup above. Other setups will differ.
 
-- half‑wave SSR control (default 10 ms)
-- smart‑meter integration and PV power balancing
-- multiple regulation modes (OFF, NETZERO, NETZERO_CAP, SOFTZERO, BURST)
-- safe integration into home‑automation platforms (Home Assistant, etc.)
-- deterministic real‑time behavior and watchdog supervision
+| | |
+|---|---|
+| Savings | about 350 € per year |
+| Hardware cost | about 80 € (SSR, ESP32, wiring) |
+| Payback | about 3 months |
 
+## How it works
 
+```
++-----------------+  GET /set  +-------------+  queue  +-----------+
+| Home automation | ---------> | HTTP server | ------> | SSR loop  |
+|                 |            | core 0      |         | core 1    |
++-----------------+            +-------------+         +-----------+
+         ^                                                   |
+         | grid power                                        | GPIO
+         |                                                   v
++-----------------+          +--------+          +----------------+
+|   Smart meter   | <------- | Heater | <------- | Zero cross SSR |
++-----------------+          +--------+          +----------------+
+```
 
-## System Architecture
+* An external controller, for example Home Assistant, reads the grid power and calls `GET /set` every few seconds with the power and the mode.
+* Core 0 runs WiFi and the HTTP server.
+* Core 1 runs only the SSR loop. It switches the GPIO every 10 ms and takes new messages between two patterns.
+* Without new messages the current pattern keeps running until the watchdog switches off.
 
-After initialization of core components (`status_led`, `wifi`, `ssr`), two primary tasks are launched:
- - wifi_coordinator
- - ssr_coordinator
+### Level selection
 
+```
+p_eff = p_active + current_level * P_nominal
+```
 
-### WiFi Coordinator (Core 0)
-- Manages WiFi connectivity  
-- Hosts the REST API  
-- Validates request parameters  
-- Sends control messages via queue to the SSR task  
-- Drives status LED for connectivity/HTTP errors  
+* `p_active` is the grid power, positive for export. Adding the current heater power gives the real surplus.
+* `p_eff` is compared with the thresholds of the mode, see [Modes](#modes).
+* Up: one level at a time, after `SSR_UPSHIFT_DEBOUNCE` messages in a row above the threshold.
+* Down: at once.
 
-This task is **not time‑critical**.
+### Half-wave patterns
 
+```
+slot        1  2  3  4  5  6
+polarity    +  -  +  -  +  -
+33 %        #  .  .  #  .  .
+66 %        #  #  .  #  #  .
+100 %       #  #  #  #  #  #
+```
 
-### Real‑Time SSR Coordinator (Core 1)
+* One pattern has 6 slots of 10 ms, one half-wave per slot.
+* Each pattern repeats after 3 slots, so every 30 ms meter window gets the same energy.
+* DC free by design. At 33 % the two active half-waves have opposite polarity. At 66 % they come in pairs.
+* The firmware counts active slots on even and odd positions and blocks the output if the counts differ.
+* No mains sync needed. The zero cross SSR switches at the next zero crossing, so a slot that starts a bit early or late still covers exactly one half-wave.
 
-A fully deterministic, timing‑critical task:
-- Executes on a strict **HALF_WAVE** interval (10 ms default)  
-- Uses fixed patterns for controlling the SSR  
-- Processes new control messages during the 10ms delay before the new INTEGRATION_TIME interval starts  
-- Repeats the current pattern if no new message arrives  
-- Triggers **safety off** if no API command was received within `SSR_WATCHDOG_S`  
-- If pattern computation ever exceeds timing (very unlikely), LED stays **solid yellow** until reboot  
+## Modes
 
-This guarantees stable AC waveform timing independent of computation time.
+Thresholds for a 2350 W heater. The value is the surplus `p_eff` needed for each level.
 
+| Mode | 33 % | 66 % | 100 % | Use |
+|---|---|---|---|---|
+| `MODE_OFF` | | | | Heater off |
+| `MODE_BURST` | | | always | Full power, for example a boost or a legionella cycle |
+| `MODE_NETZERO` | 775 W | 1551 W | 2350 W | Only real surplus, no grid import |
+| `MODE_NETZERO_CAP` | 775 W | 1551 W | never | Like NETZERO but stops at 66 %. Spreads the heating over the day to catch peaks above the export limit |
+| `MODE_SOFTZERO` | 129 W | 912 W | 1695 W | For days with little sun. Takes every watt of PV and accepts up to about 650 W from the grid |
+
+SOFTZERO goes to the next level once the surplus is 1/6 of a level above the current one. On a bad day the boiler needs grid power anyway. It is cheaper to buy a bit now than to export the small surplus for little money and buy it back in the evening.
 
 ## REST API
 
-Burstly exposes two minimal endpoints.
+### `GET /set`
 
+| Parameter | Description |
+|---|---|
+| `mode` | `mode_off`, `mode_burst`, `mode_netzero`, `mode_netzero_cap` or `mode_softzero` |
+| `p_active` | Grid power in W. Positive means export. Not needed for `mode_off` |
 
-### `GET /set` — Update Control State
-Updates the SSR control parameters and triggers pattern generation.
-
-#### Parameters
-
-| Name       | Type  | Description |
-|------------|--------|-------------|
-| `mode`     | enum   | One of `MODE_OFF`, `MODE_BURST`, `MODE_NETZERO`, `MODE_NETZERO_CAP`, `MODE_SOFTZERO` |
-| `p_active` | float  | Active power from smart meter (positive = export, negative = import) |
-
-
-#### Response
-- **200 OK** — Valid parameters; response includes calculated `ssr_lvl`
-- **400 Bad Request** — Missing or invalid parameters
-
----
-
-### `GET /reboot` — Restart Device
-Reboots the ESP32.
-
-
-## Control Modes
-
-```c
-typedef enum {
-    MODE_INVALID,
-    MODE_OFF,
-    MODE_BURST,
-    MODE_NETZERO,
-    MODE_NETZERO_CAP,
-    MODE_SOFTZERO
-} ssr_mode_t;
+```
+$ curl "http://<esp-ip>/set?mode=mode_softzero&p_active=350"
+{"mode":"mode_softzero","p_active":350.00,"ssr_lvl":33.30}
 ```
 
-### MODE_UNKNOWN  
-Returned when invalid API parameters were provided.
+The answer contains the level the firmware picked. Bad input returns `400` with a short reason, for example `MODE_INVALID` or `P_ACTIVE_INVALID`.
 
-### MODE_OFF  
-SSR is always OFF.
+### `GET /reboot`
 
-### MODE_BURST  
-High‑power heating (e.g., manual boost cycles).  
+Restarts the ESP32.
 
-### MODE_NETZERO 
-Attempts to use zero grid import.  
-Uses:
+## Safety
 
-### MODE_NETZERO_CAP
-Same as NETZERO, but limited to the 66 % level - the 100 % level is never used. Spreads the heating over a longer window, e.g. to absorb PV peaks above the grid export limit instead of filling the boiler early in the day.
+* Watchdog: if no valid `/set` arrives for `SSR_WATCHDOG_S` seconds (default 180), the firmware switches to OFF.
+* DC check: if the even and odd slot counters differ, the output is blocked and the LED turns white.
+* Timing check: if the SSR loop misses a slot, it logs a warning and the LED turns yellow.
+* WiFi: after a few failed reconnects the WiFi stack restarts. After `WIFI_MAX_STACK_RESTARTS` restarts the ESP32 reboots.
+* Temperature: not handled here. The heater thermostat and the home automation take care of that.
 
-### MODE_SOFTZERO  
-Similar to NETZERO, but takes every PV watt on low-yield days: it switches to the next level as soon as the surplus exceeds the current level by `P_BOILER_LEVEL_MIN / 6` (~130 W at 2350 W nominal), accepting a grid import of up to ~5/6 of `P_BOILER_LEVEL_MIN` (~650 W) on every level. At 2350 W nominal the thresholds are ~130 W (33 %), ~910 W (66 %) and ~1700 W (100 %). The margin keeps the level from toggling on meter noise. It follows the principle: 'Better to import than to export' - on a deficit day the boiler needs the energy anyway. Ideal for winter months or days with low PV yield.
+The API has no authentication. Only run it in a trusted network.
 
+### Status LED
 
+| Color | Meaning |
+|---|---|
+| Red | OFF |
+| Green | NETZERO or NETZERO_CAP |
+| Blue | SOFTZERO |
+| Magenta | BURST |
+| Cyan | Starting or WiFi connecting |
+| Yellow | Timing error |
+| White | DC imbalance, output blocked |
 
-## Integration Time (Why It Matters)
+## Build and flash
 
-Smart meters do not measure instantaneous power directly; they calculate energy over a fixed **integration time frame** (e.g., 180 ms).
+Needs ESP-IDF 5.x (tested with 5.5.2) and an ESP32-S3.
 
-To avoid misleading measurements:
-- ON‑waves must be evenly distributed  
-- bursts must not be clustered  
-- SSR output must match smart‑meter averaging models  
-
-In an ideal world, the integration time is approximately 200ms, allowing for 10 control steps at full-wave resolution. However, modern smart meters like the Iskra AM550 integrate over just 30ms, which limits the resolution to 3 control steps at half-wave resolution.
-
-
-## Watchdogs & Safety
-
-### SSR Watchdog  
-If no valid `/set` request is received within `SSR_WATCHDOG_S` seconds → fallback to **MODE_OFF**.
-
-### (Environment) Thermal Protection  
-Handled externally (e.g., via Home Assistant). Burstly only regulates energy flow!
-
-
-## Status LED
-- **Red** — indicates MODE_OFF
-- **Green** — indicates MODE_NETZERO and MODE_NETZERO_CAP  
-- **Blue** — indicates MODE_SOFTZERO 
-- **Magenta** — indicates MODE_BURST
-- **Yellow** — indicates a timing error
-- **Cyan** — indicates init error
-- **White** — indicates an imbalance in half-wave distribution, which could lead to a DC offset.
-- **Off** — Controller inactive
-
-
-## Control Message Structure
-
-```c
-typedef struct {
-  ssr_mode_t mode;
-  float p_active;
-} ssr_control_msg_t;
+```
+idf.py set-target esp32s3
+idf.py menuconfig
+idf.py -p PORT flash monitor
 ```
 
-Messages are transferred via queue from the API task to the SSR real‑time task.
+Settings in `menuconfig` under Component config:
 
+| Option | Default | Description |
+|---|---|---|
+| `SSR_GPIO` | 4 | GPIO for the SSR |
+| `SSR_UPSHIFT_DEBOUNCE` | 2 | Messages above a threshold before stepping up |
+| `SSR_WATCHDOG_S` | 180 | Seconds without a message before OFF |
+| `P_BOILER_MAX_NOM` | 3400 | Heater power in W. Measure it and set the real value |
+| `STATUS_LED_GPIO` | 38 | GPIO of the WS2812 status LED |
+| `WIFI_SSID` | | WiFi name |
+| `WIFI_PASSWORD` | | WiFi password |
+| `WIFI_MAX_STACK_RESTARTS` | 3 | WiFi stack restarts before reboot |
 
-## Kconfig Options
+## Hardware
 
-### SSR  
-- `SSR_GPIO`  
-- `SSR_WATCHDOG_S`
+* ESP32-S3 module with two cores, for example ESP32-S3-WROOM-1. A single core chip will not work because the tasks are pinned to both cores.
+* Zero cross SSR for resistive loads, for example Carlo Gavazzi RGC1A23D30KKE. It should accept 3.3 V on the input and be rated well above the heater current.
 
-### Power
-- `P_BOILER_MAX_NOM`  
+Work on mains voltage only if you know what you are doing.
 
-### WiFi
-- `WIFI_SSID`  
-- `WIFI_PASSWORD`  
-- `WIFI_MAX_STACK_RESTARTS`
+## Branches
 
-## Hardware Requirements
+* `main`: this version. Half-wave control for meters with a short integration time like the Iskra AM550.
+* `generic`: the first version. Full-wave control for meters that average over 180 ms or more. It spreads the on waves with Bresenham and has a sigma-delta mode for finer levels.
 
-Burstly is designed to run on a **dual‑core ESP32 MCU**.  
-Because the project uses **task pinning** (WiFi/API on Core 0 and real‑time SSR control on Core 1),  
-a **single‑core variant will not work**.
+## License
 
-### Recommended MCU Module
-- **ESP32‑S3‑WROOM‑1**  
-  Provides dual‑core operation, stable WiFi performance, and sufficient timing accuracy for full‑wave SSR control.
+MIT, see [LICENSE](LICENSE).
 
-
-### Recommended SSR
-Burstly controls a **Zero‑Cross Solid State Relay (SSR)** to switch full AC waves.  
-A proper zero‑cross SSR is required for clean waveform switching and predictable timing.
-
-If the SSR requires **more than 3V input control voltage**, a **level shifter** must be used.  
-Many SSRs accept 3–32V input and can be driven directly from an ESP32 GPIO.
-
-Example compatible unit: **Carlo Gavazzi RGC1A23D30KKE**
-
-Any equivalent SSR can be used as long as:
-- it is **zero‑cross**
-- it supports **3.0V input**, or a level shifter is added
-- it is designed for **resistive loads**
-- its output rating safely covers the **maximum heating power**, ideally ×1.5–2 to account for derating and thermal overhead
-
-
-# Disclaimer
-
-This software is provided **"as is"**, without any warranties of any kind, express or implied.  
-Use of this firmware is entirely **at your own risk**.
-
-This project is developed as a **personal side project**.  
-There is **no support commitment**, **no guaranteed response time**, and **no obligation to implement feature requests or enhancements**.
-
-If you decide to use or modify this software, you are fully responsible for testing, validating, and ensuring safe operation within your own environment.
+This is a personal project. Use it at your own risk.
