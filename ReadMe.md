@@ -2,6 +2,8 @@
 <img src=".burstly_logo_full.png" width="330" style="display:block;margin:0 auto;">
 </p>
 
+> **Note:** This is the first, full-wave version of Burstly. It is meant for meters that average over 180 ms or more. The maintained half-wave version for meters like the Iskra AM550 is on the [main](https://github.com/stax0/Burstly/tree/main) branch.
+
 **Burstly** is a high‑precision ESP‑IDF firmware project designed to control an electric heating element using **full‑wave AC modulation**.  
 It exposes a minimal REST API for real‑time interaction and implements a deterministic **20 ms full‑wave switching schedule**, suitable for smart‑meter–driven energy management and PV self‑consumption optimization.
 
