@@ -3,10 +3,14 @@
 #include "esp_check.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_wifi.h"
 #include "http.h"
 #include "nvs_flash.h"
 #include "status_led.h"
+
+// seconds spent reconnecting before the WiFi stack gets restarted
+#define WIFI_RECONNECT_ATTEMPTS 10
 
 static const char* TAG = "wifi";
 
@@ -17,12 +21,11 @@ typedef struct {
 
 QueueHandle_t wifi_event_queue = NULL;
 
-wifi_status_t wifi_state = WIFI_STATE_OK;
-
 void wifi_coordinator(void* pv) {
     wifi_evt_t evt;
     wifi_status_t current_state = WIFI_STATE_INITIALIZING;
     int retry_count = 0;
+    int stack_restarts = 0;
 
     for (;;) {
         if (xQueueReceive(wifi_event_queue, &evt, pdMS_TO_TICKS(1000))) {
@@ -45,6 +48,7 @@ void wifi_coordinator(void* pv) {
                 ESP_LOGI(TAG, "Got IP!");
                 current_state = WIFI_STATE_OK;
                 retry_count = 0;
+                stack_restarts = 0;
                 http_server_start();
                 status_led_clear_override();
             }
@@ -52,7 +56,11 @@ void wifi_coordinator(void* pv) {
 
         if (current_state == WIFI_STATE_CONNECTING) {
             retry_count++;
-            if (retry_count > 10) {
+            if (retry_count > WIFI_RECONNECT_ATTEMPTS) {
+                if (++stack_restarts > CONFIG_WIFI_MAX_STACK_RESTARTS) {
+                    ESP_LOGE(TAG, "WiFi stack restarts exhausted, rebooting");
+                    esp_restart();
+                }
                 ESP_LOGE(TAG, "Recovery: Total reset of WiFi stack");
                 current_state = WIFI_STATE_RECOVERING;
                 esp_wifi_stop();
@@ -66,7 +74,8 @@ void wifi_coordinator(void* pv) {
 
 static void wifi_event_handler(void* arg, esp_event_base_t base, int32_t id, void* data) {
     wifi_evt_t evt = {.base = base, .id = id};
-    xQueueSendFromISR(wifi_event_queue, &evt, NULL);
+    // runs in the default event loop task, not in an ISR
+    xQueueSend(wifi_event_queue, &evt, 0);
 }
 
 esp_err_t wifi_init(void) {
