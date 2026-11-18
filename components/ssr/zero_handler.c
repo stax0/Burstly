@@ -15,14 +15,16 @@ static TickType_t zh_wake;
 static float zh_ssr_lvl = 0;
 static const uint8_t* zh_pattern = NULL;
 
-static int c_pos = 0;
-static int c_neg = 0;
+// on-slots counted by slot parity. Consecutive half-waves alternate polarity,
+// so equal counts mean no DC component on the mains.
+static int c_even = 0;
+static int c_odd = 0;
 static int c_up = 0;
 static int current_idx = 0;
 
 static const uint8_t wave_duration = 10;
-const int p_threshold_1_3 = CONFIG_P_BOILER_MAX_NOM * 0.33f;
-const int p_threshold_2_3 = CONFIG_P_BOILER_MAX_NOM * 0.66f;
+static const int p_threshold_1_3 = CONFIG_P_BOILER_MAX_NOM * 0.33f;
+static const int p_threshold_2_3 = CONFIG_P_BOILER_MAX_NOM * 0.66f;
 
 // SOFTZERO: switch to the next level once the surplus exceeds the current level by L1/6
 #define P_SOFT_MARGIN ((int)(CONFIG_P_BOILER_MAX_NOM * 0.33f) / 6)
@@ -32,43 +34,51 @@ static const int p_soft_threshold_3 = CONFIG_P_BOILER_MAX_NOM * 2 / 3 + P_SOFT_M
 
 static const float LEVELS[] = {0.0f, 33.3f, 66.6f, 100.0f};
 
+// One slot is one half-wave (10 ms at 50 Hz). Each pattern repeats every 3 slots,
+// so every 30 ms meter integration window sees the same energy.
+// The 6 slot length makes them DC free: P_33 switches half-waves 3 apart
+// (opposite polarity), P_66 switches pairs of neighbouring half-waves.
 static const uint8_t P_0[ZH_SSR_STEPS] = {0, 0, 0, 0, 0, 0};
 static const uint8_t P_33[ZH_SSR_STEPS] = {1, 0, 0, 1, 0, 0};
 static const uint8_t P_66[ZH_SSR_STEPS] = {1, 1, 0, 1, 1, 0};
 static const uint8_t P_100[ZH_SSR_STEPS] = {1, 1, 1, 1, 1, 1};
 static const uint8_t* PATTERNS[] = {P_0, P_33, P_66, P_100};
 
+static void zh_start(status_color_t color, const char* name) {
+    zh_pattern = P_0;
+    zh_ssr_lvl = 0;
+    current_idx = 0;
+    c_up = 0;
+
+    status_led_set(color);
+    ESP_LOGI(TAG, "%s Mode Started", name);
+
+    zh_wake = xTaskGetTickCount();
+}
+
+static void zh_stop(const char* name) {
+    gpio_set_level(CONFIG_SSR_GPIO, 0);
+    ESP_LOGI(TAG, "%s Mode Stopped", name);
+}
+
 static void nzh_enter(void) {
-    zh_pattern = P_0;
-    zh_ssr_lvl = 0;
-    current_idx = 0;
-
-    status_led_set(COLOR_GREEN);
-    ESP_LOGI(TAG, "NETZERO Mode Started");
-
-    zh_wake = xTaskGetTickCount();
+    zh_start(COLOR_GREEN, "NETZERO");
 }
-
 static void nzch_enter(void) {
-    zh_pattern = P_0;
-    zh_ssr_lvl = 0;
-    current_idx = 0;
-
-    status_led_set(COLOR_GREEN);
-    ESP_LOGI(TAG, "NETZERO (cap) Mode Started");
-
-    zh_wake = xTaskGetTickCount();
+    zh_start(COLOR_GREEN, "NETZERO_CAP");
+}
+static void szh_enter(void) {
+    zh_start(COLOR_BLUE, "SOFTZERO");
 }
 
-static void szh_enter(void) {
-    zh_pattern = P_0;
-    zh_ssr_lvl = 0;
-    current_idx = 0;
-
-    status_led_set(COLOR_BLUE);
-    ESP_LOGI(TAG, "SOFTZERO Mode Started");
-
-    zh_wake = xTaskGetTickCount();
+static void nzh_exit(void) {
+    zh_stop("NETZERO");
+}
+static void nzch_exit(void) {
+    zh_stop("NETZERO_CAP");
+}
+static void szh_exit(void) {
+    zh_stop("SOFTZERO");
 }
 
 static void zh_run(ssr_control_msg_t* msg, bool is_new) {
@@ -109,7 +119,7 @@ static void zh_run(ssr_control_msg_t* msg, bool is_new) {
         ssr_lvl = zh_ssr_lvl;
     }
 
-    if (c_pos != c_neg) {
+    if (c_even != c_odd) {
         gpio_set_level(CONFIG_SSR_GPIO, 0);
         ESP_LOGE(TAG, "DC Offset detected, blocking!");
         status_led_override(COLOR_WHITE);
@@ -117,9 +127,9 @@ static void zh_run(ssr_control_msg_t* msg, bool is_new) {
         return;
     }
 
-    if (c_pos > 30000 || c_neg > 30000) {
-        c_pos = 0;
-        c_neg = 0;
+    if (c_even > 30000 || c_odd > 30000) {
+        c_even = 0;
+        c_odd = 0;
     }
 
     for (int i = 0; i < ZH_SSR_STEPS; i++) {
@@ -133,27 +143,12 @@ static void zh_run(ssr_control_msg_t* msg, bool is_new) {
 
         if (zh_pattern[i] == 1) {
             if (i % 2 == 0) {
-                c_pos++;
+                c_even++;
             } else {
-                c_neg++;
+                c_odd++;
             }
         }
     }
-}
-
-static void nzh_exit(void) {
-    gpio_set_level(CONFIG_SSR_GPIO, 0);
-    ESP_LOGI(TAG, "NetZero Mode Stopped");
-}
-
-static void nzch_exit(void) {
-    gpio_set_level(CONFIG_SSR_GPIO, 0);
-    ESP_LOGI(TAG, "NetZero (cap) Mode Stopped");
-}
-
-static void szh_exit(void) {
-    gpio_set_level(CONFIG_SSR_GPIO, 0);
-    ESP_LOGI(TAG, "SoftZero Mode Stopped");
 }
 
 const ssr_handler_t netzero_handler = {
