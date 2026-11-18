@@ -5,6 +5,9 @@
 #include "freertos/idf_additions.h"
 #include "ssr.h"
 
+#include <math.h>
+#include <stdlib.h>
+
 static const char* TAG = "http";
 
 static httpd_handle_t server = NULL;
@@ -57,7 +60,16 @@ static esp_err_t set_get_handler(httpd_req_t* req) {
         return ESP_OK;
     }
 
-    float p_active = p_active_ok ? strtof(p_active_str, NULL) : 0.0f;
+    float p_active = 0.0f;
+    if (p_active_ok) {
+        char* end = NULL;
+        p_active = strtof(p_active_str, &end);
+        if (end == p_active_str || *end != '\0' || !isfinite(p_active)) {
+            httpd_resp_set_status(req, "400 Bad Request");
+            httpd_resp_sendstr(req, "Bad request: P_ACTIVE_INVALID");
+            return ESP_OK;
+        }
+    }
 
     httpd_resp_set_status(req, "200 OK");
     httpd_resp_set_type(req, "application/json");
