@@ -2,11 +2,11 @@
 
 #include "esp_check.h"
 #include "led_strip.h"
+#include "sdkconfig.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 
-#define STATUS_LED_PIN 38
 static const char* TAG = "status_led";
 
 static status_color_t current_status_color = COLOR_OFF;
@@ -61,7 +61,7 @@ static void color_to_rgb(status_color_t color, uint8_t* r, uint8_t* g, uint8_t* 
 
 esp_err_t status_led_init(void) {
     led_strip_config_t strip_config = {
-        .strip_gpio_num = STATUS_LED_PIN,
+        .strip_gpio_num = CONFIG_STATUS_LED_GPIO,
         .max_leds = 1,
         .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,
         .led_model = LED_MODEL_WS2812,
